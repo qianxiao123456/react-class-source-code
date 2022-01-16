@@ -15,7 +15,9 @@ class Parent extends React.Component {
 
   render() {
     return (
-      <>
+      // <>和<React.Fragment>是想等的
+      // 功能，内部有很多兄弟节点，但是外层不想再包一层div
+      <> 
         <div>
           <label>childContext:</label>
           <input

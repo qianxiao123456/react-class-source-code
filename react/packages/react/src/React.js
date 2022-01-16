@@ -38,7 +38,7 @@ import {enableStableConcurrentModeAPIs} from 'shared/ReactFeatureFlags';
 const React = {
   Children: {
     map,
-    forEach,
+    forEach, //和map的区别就是没有return
     count,
     toArray,
     only,
