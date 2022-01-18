@@ -94,112 +94,80 @@ export type Fiber = {|
   // minimize the number of objects created during the initial render.
 
   // Tag identifying the type of fiber.
+
+  // 匹配不同的组件类型，class组件，function组件
   tag: WorkTag,
 
   // Unique identifier of this child.
+  // ReactElement里面的key
   key: null | string,
 
-  // The value of element.type which is used to preserve the identity during
-  // reconciliation of this child.
+
+  // ReactElement.type, 也就是我们调用"createElement的第一个参数
   elementType: any,
 
   // The resolved function/class/ associated with this fiber.
+  // 用来记录lazy component之后，返回的是class组件/function组件
   type: any,
 
   // The local state associated with this fiber.
+
+  // 节点的实际的实例，class组件实例，function没有实例（没有该属性）
   stateNode: any,
 
-  // Conceptual aliases
-  // parent : Instance -> return The parent happens to be the same as the
-  // return fiber since we've merged the fiber and instance.
-
-  // Remaining fields belong to Fiber
-
-  // The Fiber to return to after finishing processing this one.
-  // This is effectively the parent, but there can be multiple parents (two)
-  // so this is only the parent of the thing we're currently processing.
-  // It is conceptually the same as the return address of a stack frame.
   return: Fiber | null,
 
-  // Singly Linked List Tree Structure.
+  // 第一个孩子节点
   child: Fiber | null,
+  // 兄弟节点
   sibling: Fiber | null,
   index: number,
 
-  // The ref last used to attach this node.
-  // I'll avoid adding an owner field for prod and model that as functions.
   ref: null | (((handle: mixed) => void) & {_stringRef: ?string}) | RefObject,
+  // setState 更新后，pendingProps是新的props，memoizedProps是旧的props
+  pendingProps: any, 
+  memoizedProps: any, 
 
-  // Input is the data coming into process this fiber. Arguments. Props.
-  pendingProps: any, // This type will be more specific once we overload the tag.
-  memoizedProps: any, // The props used to create the output.
-
-  // A queue of state updates and callbacks.
+  // 
   updateQueue: UpdateQueue<any> | null,
 
   // The state used to create the output
+
+  // 旧的state
   memoizedState: any,
 
-  // A linked-list of contexts that this fiber depends on
   firstContextDependency: ContextDependency<mixed> | null,
 
-  // Bitfield that describes properties about the fiber and its subtree. E.g.
-  // the ConcurrentMode flag indicates whether the subtree should be async-by-
-  // default. When a fiber is created, it inherits the mode of its
-  // parent. Additional flags can be set at creation time, but after that the
-  // value should remain unchanged throughout the fiber's lifetime, particularly
-  // before its child fibers are created.
+  // concurrentMode那几种
   mode: TypeOfMode,
 
-  // Effect
   effectTag: SideEffectTag,
 
-  // Singly linked list fast path to the next fiber with side-effects.
   nextEffect: Fiber | null,
 
-  // The first and last fiber with side-effect within this subtree. This allows
-  // us to reuse a slice of the linked list when we reuse the work done within
-  // this fiber.
   firstEffect: Fiber | null,
   lastEffect: Fiber | null,
 
-  // Represents a time in the future by which this work should be completed.
-  // Does not include work found in its subtree.
+  //  当前节点产生更新的过期时间
   expirationTime: ExpirationTime,
 
-  // This is used to quickly determine if a subtree has no pending changes.
+  // 字节点更新的过期时间
   childExpirationTime: ExpirationTime,
 
-  // This is a pooled version of a Fiber. Every fiber that gets updated will
-  // eventually have a pair. There are cases when we can clean up pairs to save
-  // memory if we need to.
+
+  // 在Fiber树更新的过程中，每个Fiber都会有一个跟其对应的Fiber
+  // 我们称他为current(当前fiber)<=>workInprogress(即将要更新的Fiber)
+  // 在渲染完成后，他们会交换位置workInprogress会变成current。
   alternate: Fiber | null,
 
-  // Time spent rendering this Fiber and its descendants for the current update.
-  // This tells us how well the tree makes use of sCU for memoization.
-  // It is reset to 0 each time we render and only updated when we don't bailout.
-  // This field is only set when the enableProfilerTimer flag is enabled.
   actualDuration?: number,
 
-  // If the Fiber is currently active in the "render" phase,
-  // This marks the time at which the work began.
-  // This field is only set when the enableProfilerTimer flag is enabled.
   actualStartTime?: number,
 
-  // Duration of the most recent render time for this Fiber.
-  // This value is not updated when we bailout for memoization purposes.
-  // This field is only set when the enableProfilerTimer flag is enabled.
   selfBaseDuration?: number,
 
-  // Sum of base times for all descedents of this Fiber.
-  // This value bubbles up during the "complete" phase.
-  // This field is only set when the enableProfilerTimer flag is enabled.
   treeBaseDuration?: number,
 
-  // Conceptual aliases
-  // workInProgress : Fiber ->  alternate The alternate used for reuse happens
-  // to be the same as work in progress.
-  // __DEV__ only
   _debugID?: number,
   _debugSource?: Source | null,
   _debugOwner?: Fiber | null,

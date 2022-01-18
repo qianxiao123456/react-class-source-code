@@ -99,7 +99,7 @@ export type FiberRoot = {
   ...ProfilingOnlyFiberRootProperties,
 };
 
-export function createFiberRoot(
+export function  createFiberRoot(
   containerInfo: any,
   isConcurrent: boolean,
   hydrate: boolean,
@@ -111,8 +111,12 @@ export function createFiberRoot(
   let root;
   if (enableSchedulerTracing) {
     root = ({
+      // root 对应的fiber对象(fiber对象的顶点)
+      // 每一个react element都对应一个fiber对象
       current: uninitializedFiber,
+      // 应用挂载的节点
       containerInfo: containerInfo,
+       
       pendingChildren: null,
 
       earliestPendingTime: NoWork,
@@ -121,17 +125,25 @@ export function createFiberRoot(
       latestSuspendedTime: NoWork,
       latestPingedTime: NoWork,
 
+      // 标记代码是否有出现错误 
       didError: false,
 
       pendingCommitExpirationTime: NoWork,
+      // 在每一次渲染更新过程中，完成了的那个任务（这个节点后续渲染的时候会输出）
       finishedWork: null,
+      // 在任务被挂起的时候通过设置setTimeout返回的内容，用来下一次有新任务挂起时清理还没有触发的timeout
       timeoutHandle: noTimeout,
+      // 顶层context对象，只有主动调用renderSubtreeIntoContainer时才有用
       context: null,
       pendingContext: null,
+      // 应用是否需要跟原来的dom节点合并
       hydrate,
+      // 标记这次更新渲染的需要执行的任务， 每一个节点会有一个expirationTime, root上会比较每一个节点会有一个expirationTime看看优先级比较高
       nextExpirationTimeToWorkOn: NoWork,
+      // 绝大多数情况和nextExpirationTimeToWorkOn是一样的
       expirationTime: NoWork,
       firstBatch: null,
+      // 如果要挂载的root有两个，nextScheduledRoot会串联起来两个root, 比较哪个root的优先级高
       nextScheduledRoot: null,
 
       interactionThreadID: unstable_getThreadID(),
