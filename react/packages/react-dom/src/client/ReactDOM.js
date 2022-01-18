@@ -448,8 +448,8 @@ function shouldHydrateDueToLegacyHeuristic(container) {
   const rootElement = getReactRootElementInContainer(container);
   return !!(
     rootElement &&
-    rootElement.nodeType === ELEMENT_NODE &&
-    rootElement.hasAttribute(ROOT_ATTRIBUTE_NAME)
+    rootElement.nodeType === ELEMENT_NODE &&  // ELEMENT_NODE代表正常节点
+    rootElement.hasAttribute(ROOT_ATTRIBUTE_NAME) // ROOT_ATTRIBUTE_NAME 老版本服务端的渲染，会在第一个节点上加上这个属性，标示：有服务端渲染
   );
 }
 
@@ -471,6 +471,7 @@ function legacyCreateRootFromDOMContainer(
   if (!shouldHydrate) {
     let warned = false;
     let rootSibling;
+    //这里把container里的字节点全部删除
     while ((rootSibling = container.lastChild)) {
       if (__DEV__) {
         if (
@@ -507,10 +508,10 @@ function legacyCreateRootFromDOMContainer(
 }
 
 function legacyRenderSubtreeIntoContainer(
-  parentComponent: ?React$Component<any, any>,
-  children: ReactNodeList,
+  parentComponent: ?React$Component<any, any>, // null
+  children: ReactNodeList, 
   container: DOMContainer,
-  forceHydrate: boolean,
+  forceHydrate: boolean, // false
   callback: ?Function,
 ) {
   // TODO: Ensure all entry points contain this check
@@ -525,7 +526,7 @@ function legacyRenderSubtreeIntoContainer(
 
   // TODO: Without `any` type, Flow says "Property cannot be accessed on any
   // member of intersection type." Whyyyyyy.
-  let root: Root = (container._reactRootContainer: any);
+  let root: Root = (container._reactRootContainer: any); //_reactRootContainer 第一次渲染是没有的
   if (!root) {
     // Initial mount
     root = container._reactRootContainer = legacyCreateRootFromDOMContainer(
@@ -540,8 +541,9 @@ function legacyRenderSubtreeIntoContainer(
       };
     }
     // Initial mount should not be batched.
+    // 批量更新
     DOMRenderer.unbatchedUpdates(() => {
-      if (parentComponent != null) {
+      if (parentComponent != null) { //null
         root.legacy_renderSubtreeIntoContainer(
           parentComponent,
           children,
@@ -635,13 +637,17 @@ const ReactDOM: Object = {
     );
   },
 
+  /**
+   * hydrate 和render本质是一样的，只有第四个参数不一样一个是
+   * hydrate有服务端渲染的时候用，提高性能
+  */
   render(
-    element: React$Element<any>,
-    container: DOMContainer,
-    callback: ?Function,
+    element: React$Element<any>, 
+    container: DOMContainer,// 要挂在到哪个react节点上
+    callback: ?Function,  //挂载结束后执行的callback 
   ) {
     return legacyRenderSubtreeIntoContainer(
-      null,
+      null, 
       element,
       container,
       false,

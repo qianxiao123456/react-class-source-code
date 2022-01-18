@@ -129,7 +129,7 @@ function scheduleRootUpdate(
       );
     }
   }
-
+  // update 对象用来标记需要更新的地点
   const update = createUpdate(expirationTime);
   // Caution: React DevTools currently depends on this property
   // being called "element".
@@ -145,6 +145,7 @@ function scheduleRootUpdate(
     );
     update.callback = callback;
   }
+  // 把update加入到quene里面（同一个节点也会有很多更新）
   enqueueUpdate(current, update);
 
   scheduleWork(current, expirationTime);
@@ -273,7 +274,7 @@ export function createContainer(
 }
 
 export function updateContainer(
-  element: ReactNodeList,
+  element: ReactNodeList, 
   container: OpaqueRoot,
   parentComponent: ?React$Component<any, any>,
   callback: ?Function,
