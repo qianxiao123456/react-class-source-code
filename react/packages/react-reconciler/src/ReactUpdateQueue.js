@@ -151,10 +151,15 @@ if (__DEV__) {
 
 export function createUpdateQueue<State>(baseState: State): UpdateQueue<State> {
   const queue: UpdateQueue<State> = {
+    // 这个是每次更新的依据，比如第一次会存储一次更新，第二次更新会在第一次的基础上（这里就需要baseState）做更新
     baseState,
+    // 列表中的第一个update
     firstUpdate: null,
+     // 列表中的最后一个update
     lastUpdate: null,
+    // 第一个捕获类型update
     firstCapturedUpdate: null,
+    // 最后一个捕获类型update
     lastCapturedUpdate: null,
     firstEffect: null,
     lastEffect: null,
@@ -188,12 +193,24 @@ function cloneUpdateQueue<State>(
 
 export function createUpdate(expirationTime: ExpirationTime): Update<*> {
   return {
+
+    // 对应这次更新过期时间
     expirationTime: expirationTime,
 
+    /**
+     * tag有4种情况
+     *  UpdateState = 0 更新state
+     *  ReplaceState = 1 替换state
+     *  ForceState = 2  强制更新state
+     *  CaptureUpdate = 3 组件渲染发生错误的时候，CaptureUpdate可以让我们渲染一个提示信息
+     */
     tag: UpdateState,
+    // 实际执行的操作的内容，
+    // 例子1: 第一次ReactDOM.render(<App />, div);，这里就是<App />，
+    // 例子2： setstate的第一个参数
     payload: null,
     callback: null,
-
+    //updatequeue是一个单向链表。next是指向下一次update的
     next: null,
     nextEffect: null,
   };
@@ -215,6 +232,7 @@ function appendUpdateToQueue<State>(
 
 export function enqueueUpdate<State>(fiber: Fiber, update: Update<State>) {
   // Update queues are created lazily.
+   //alternate 到workinProgress的映射关系
   const alternate = fiber.alternate;
   let queue1;
   let queue2;
