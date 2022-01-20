@@ -1493,7 +1493,7 @@ function computeUniqueAsyncExpiration(): ExpirationTime {
   return lastUniqueAsyncExpiration;
 }
 
-function computeExpirationForFiber(currentTime: ExpirationTime, fiber: Fiber) {
+function  computeExpirationForFiber(currentTime: ExpirationTime, fiber: Fiber) {
   let expirationTime;
   if (expirationContext !== NoWork) {
     // An explicit expiration context was set;
@@ -1828,7 +1828,8 @@ let lastCommittedRootDuringThisBatch: FiberRoot | null = null;
 const timeHeuristicForUnitOfWork = 1;
 
 function recomputeCurrentRendererTime() {
-  const currentTimeMs = now() - originalStartTimeMs;
+  //  originalStartTimeMs是js加载的时候初始化的Date.now();
+  const currentTimeMs = now() - originalStartTimeMs; //currentTimeMs是现在和初始化的时间间隔
   currentRendererTime = msToExpirationTime(currentTimeMs);
 }
 
@@ -1920,30 +1921,12 @@ function onCommit(root, expirationTime) {
 }
 
 function requestCurrentTime() {
-  // requestCurrentTime is called by the scheduler to compute an expiration
-  // time.
-  //
-  // Expiration times are computed by adding to the current time (the start
-  // time). However, if two updates are scheduled within the same event, we
-  // should treat their start times as simultaneous, even if the actual clock
-  // time has advanced between the first and second call.
-
-  // In other words, because expiration times determine how updates are batched,
-  // we want all updates of like priority that occur within the same event to
-  // receive the same expiration time. Otherwise we get tearing.
-  //
-  // We keep track of two separate times: the current "renderer" time and the
-  // current "scheduler" time. The renderer time can be updated whenever; it
-  // only exists to minimize the calls performance.now.
-  //
-  // But the scheduler time can only be updated if there's no pending work, or
-  // if we know for certain that we're not in the middle of an event.
-
+  //isRendering： 是否已经进入到渲染阶段了
   if (isRendering) {
     // We're already rendering. Return the most recently read time.
-    return currentSchedulerTime;
+    return  ;
   }
-  // Check if there's pending work.
+  // 从调度队列中找到权限最高的root
   findHighestPriorityRoot();
   if (
     nextFlushedExpirationTime === NoWork ||

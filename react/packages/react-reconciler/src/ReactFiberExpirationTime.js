@@ -19,8 +19,9 @@ const UNIT_SIZE = 10;
 const MAGIC_NUMBER_OFFSET = 2;
 
 // 1 unit of expiration time represents 10ms.
-export function msToExpirationTime(ms: number): ExpirationTime {
+export function  msToExpirationTime(ms: number): ExpirationTime {
   // Always add an offset so that we don't clash with the magic number for NoWork.
+  // ｜0 是取整的意思，
   return ((ms / UNIT_SIZE) | 0) + MAGIC_NUMBER_OFFSET;
 }
 
@@ -32,6 +33,18 @@ function ceiling(num: number, precision: number): number {
   return (((num / precision) | 0) + 1) * precision;
 }
 
+/**
+ * 这里最终的公式是： 
+ * ((((currentTime - 2 + 5000 / 10) / 25) | 0) + 1) * 25
+ * 代表如果差值在25以内，计算出的结果是一样的，差值大于25，计算的结果是不一样的
+ *  5000: LOW_PRIORITY_EXPIRATION这个传入的参数
+ *  25:  LOW_PRIORITY_BATCH_SIZE
+ * 
+ * 
+ * 
+ *  这里保证了： 如果短时间多次调用setState, 计算出来的expirationTime结果是一样，这样他们的优先级是一致的，
+ *  就可以保证不会执行多次更新，提高了性能
+ */
 function computeExpirationBucket(
   currentTime,
   expirationInMs,
