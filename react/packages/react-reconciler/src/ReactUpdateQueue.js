@@ -230,9 +230,12 @@ function appendUpdateToQueue<State>(
   }
 }
 
+/**
+ * 创建或者更新updateQueue的过程
+ */
 export function enqueueUpdate<State>(fiber: Fiber, update: Update<State>) {
   // Update queues are created lazily.
-   //alternate 到workinProgress的映射关系
+   //current到workinProgress的映射关系,确保它们对应的updateQueue是相同的
   const alternate = fiber.alternate;
   let queue1;
   let queue2;
@@ -247,7 +250,7 @@ export function enqueueUpdate<State>(fiber: Fiber, update: Update<State>) {
     // There are two owners.
     queue1 = fiber.updateQueue;
     queue2 = alternate.updateQueue;
-    if (queue1 === null) {
+    if (queue1 === null) { //说明这个节点没有过更新
       if (queue2 === null) {
         // Neither fiber has an update queue. Create new ones.
         queue1 = fiber.updateQueue = createUpdateQueue(fiber.memoizedState);

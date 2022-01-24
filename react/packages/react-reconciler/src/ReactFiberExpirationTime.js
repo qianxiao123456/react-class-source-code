@@ -42,9 +42,19 @@ function ceiling(num: number, precision: number): number {
  * 
  * 
  * 
- *  这里保证了： 如果短时间多次调用setState, 计算出来的expirationTime结果是一样，这样他们的优先级是一致的，
+ *  这里保证了： 如果短时间多次调用setState（异步任务）, 计算出来的expirationTime结果是一样，这样他们的优先级是一致的，
  *  就可以保证不会执行多次更新，提高了性能
- */
+ * 
+ * 
+ * 异步任务是可以被打断的，如果异步任务的expirationTime到了，但是任务还没有执行，就会强制执行任务（防止阻塞时间太长）
+ *
+ * 
+ * 
+ * expirationTime的不同种类
+ *    Sync同步 （）
+ *    异步模式（可以被中断, 低优先级大概是500ms的时候，interactive（高优先级）需要50ms）
+ *    指定context
+*/
 function computeExpirationBucket(
   currentTime,
   expirationInMs,

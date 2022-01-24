@@ -1495,10 +1495,14 @@ function computeUniqueAsyncExpiration(): ExpirationTime {
 
 function  computeExpirationForFiber(currentTime: ExpirationTime, fiber: Fiber) {
   let expirationTime;
+  /**
+   * syncUpdates deferredUpdates 这两个方法里更新了expirationContext
+   * syncUpdates里expirationContext = Sync
+   */
+ 
   if (expirationContext !== NoWork) {
-    // An explicit expiration context was set;
     expirationTime = expirationContext;
-  } else if (isWorking) {
+  } else if (isWorking) { // 代表有任务正在更新
     if (isCommitting) {
       // Updates that occur during the commit phase should have sync priority
       // by default.
@@ -1509,8 +1513,7 @@ function  computeExpirationForFiber(currentTime: ExpirationTime, fiber: Fiber) {
       expirationTime = nextRenderExpirationTime;
     }
   } else {
-    // No explicit expiration context was set, and we're not currently
-    // performing work. Calculate a new expiration time.
+    // 这里判断了是否在ConcurrentMode组件里，否则就是Sync同步更新
     if (fiber.mode & ConcurrentMode) {
       if (isBatchingInteractiveUpdates) {
         // This is an interactive update
@@ -1760,6 +1763,7 @@ function scheduleWork(fiber: Fiber, expirationTime: ExpirationTime) {
   }
 }
 
+// 更新了expirationContext
 function deferredUpdates<A>(fn: () => A): A {
   const currentTime = requestCurrentTime();
   const previousExpirationContext = expirationContext;
@@ -1773,7 +1777,7 @@ function deferredUpdates<A>(fn: () => A): A {
     isBatchingInteractiveUpdates = previousIsBatchingInteractiveUpdates;
   }
 }
-
+// 更新了expirationContext
 function syncUpdates<A, B, C0, D, R>(
   fn: (A, B, C0, D) => R,
   a: A,

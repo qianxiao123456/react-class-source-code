@@ -182,11 +182,23 @@ export function applyDerivedStateFromProps(
     updateQueue.baseState = memoizedState;
   }
 }
-
+/**
+ * class component初始化的时候会拿到该对象
+ */
 const classComponentUpdater = {
   isMounted,
+  /* 举例： this.setState
+  * inst：  指的是：this
+    payload： 传的对象
+  */
+ /*
+ enqueueSetState和enqueueReplaceState的tag不一样
+ enqueueSetState是UpdateState（createUpdate默认的）
+ enqueueReplaceState是ReplaceState
+ */
   enqueueSetState(inst, payload, callback) {
-    const fiber = ReactInstanceMap.get(inst);
+    //ReactInstanceMap 用来做一个映射，后期可以根据inst获取Fiber对象
+    const fiber = ReactInstanceMap.get(inst); 
     const currentTime = requestCurrentTime();
     const expirationTime = computeExpirationForFiber(currentTime, fiber);
 
@@ -209,7 +221,7 @@ const classComponentUpdater = {
 
     const update = createUpdate(expirationTime);
     update.tag = ReplaceState;
-    update.payload = payload;
+    update.payload = payload; 
 
     if (callback !== undefined && callback !== null) {
       if (__DEV__) {
