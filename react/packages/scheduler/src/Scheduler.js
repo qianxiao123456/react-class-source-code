@@ -36,13 +36,18 @@ var currentExpirationTime = -1;
 
 // This is set when a callback is being executed, to prevent re-entrancy.
 var isExecutingCallback = false;
-
+/**
+ * 是否已经开始调度了，在ensureHostCallbackIsScheduled设置为true，在结束执行callback之后设置为false
+ * boolean 判断是否进入了requestHostCallback，requestHostCallback会开启animationTick，进行每一个帧的任务调度。
+ * 当调用到flushWork直到链表中的callback处理结束，设为false。 
+ */
 var isHostCallbackScheduled = false;
 
 var hasNativePerformanceNow =
   typeof performance === 'object' && typeof performance.now === 'function';
 
 var timeRemaining;
+// hasNativePerformanceNow 默认是存在的
 if (hasNativePerformanceNow) {
   timeRemaining = function() {
     if (
@@ -76,18 +81,20 @@ var deadlineObject = {
   timeRemaining,
   didTimeout: false,
 };
-
+/**
+ * 如果isHostCallbackScheduled为false，也就是还没开始调度，那么设为true，如果已经开始了，就直接取消，因为顺序可能变了。
+ */
 function ensureHostCallbackIsScheduled() {
   if (isExecutingCallback) {
-    // Don't schedule work yet; wait until the next time we yield.
+    // isExecutingCallback:如果我们的callbackNode正在被调用
+    // 如果已经在调用回调了，就 return，因为本来就会继续调用下去，isExecutingCallback在flushWork的时候会被修改为true
     return;
   }
-  // Schedule the host callback using the earliest expiration in the list.
   var expirationTime = firstCallbackNode.expirationTime;
+  // isHostCallbackScheduled: callback有没有进入调度
   if (!isHostCallbackScheduled) {
     isHostCallbackScheduled = true;
   } else {
-    // Cancel the existing host callback.
     cancelHostCallback();
   }
   requestHostCallback(flushWork, expirationTime);
@@ -96,14 +103,15 @@ function ensureHostCallbackIsScheduled() {
 function flushFirstCallback() {
   var flushedNode = firstCallbackNode;
 
-  // Remove the node from the list before calling the callback. That way the
-  // list is in a consistent state even if the callback throws.
   var next = firstCallbackNode.next;
+  // 这里是从链表中删除firstCallbackNode的处理
   if (firstCallbackNode === next) {
-    // This is the last callback in the list.
+    // 这种情况，链表只有一个元素，直接清空
+    // This is the last callback in the list
     firstCallbackNode = null;
     next = null;
   } else {
+    // 这个操作就是从链表中删除掉firstCallbackNode
     var lastCallbackNode = firstCallbackNode.previous;
     firstCallbackNode = lastCallbackNode.next = next;
     next.previous = lastCallbackNode;
@@ -178,7 +186,6 @@ function flushFirstCallback() {
 
 function flushImmediateWork() {
   if (
-    // Confirm we've exited the outer most event handler
     currentEventStartTime === -1 &&
     firstCallbackNode !== null &&
     firstCallbackNode.priorityLevel === ImmediatePriority
@@ -199,6 +206,7 @@ function flushImmediateWork() {
         // There's still work remaining. Request another callback.
         ensureHostCallbackIsScheduled();
       } else {
+        // firstCallbackNode 为null的时候，isHostCallbackScheduled 才会赋值为false
         isHostCallbackScheduled = false;
       }
     }
@@ -206,18 +214,20 @@ function flushImmediateWork() {
 }
 
 function flushWork(didTimeout) {
+  // 先设置isExecutingCallback为true，代表正在调用callback
   isExecutingCallback = true;
+  // 判断任务是否超时
   deadlineObject.didTimeout = didTimeout;
   try {
+    // didTimeout 为true说明firstCallback的timeout已经过期了
     if (didTimeout) {
-      // Flush all the expired callbacks without yielding.
       while (firstCallbackNode !== null) {
-        // Read the current time. Flush all the callbacks that expire at or
-        // earlier than that time. Then read the current time again and repeat.
-        // This optimizes for as few performance.now calls as possible.
         var currentTime = getCurrentTime();
+          // 这个循环的意思是，遍历callbackNode链表，直到第一个没有过期的callback
+          // 所以主要意义就是将所有过期的callback立刻执行完
         if (firstCallbackNode.expirationTime <= currentTime) {
           do {
+            //flushFirstCallback 方法是真正调用callback的方法
             flushFirstCallback();
           } while (
             firstCallbackNode !== null &&
@@ -228,11 +238,12 @@ function flushWork(didTimeout) {
         break;
       }
     } else {
-      // Keep flushing callbacks until we run out of time in the frame.
       if (firstCallbackNode !== null) {
         do {
           flushFirstCallback();
         } while (
+
+          // 比较frameDeadLine和currenttime
           firstCallbackNode !== null &&
           getFrameDeadline() - getCurrentTime() > 0
         );
@@ -241,12 +252,22 @@ function flushWork(didTimeout) {
   } finally {
     isExecutingCallback = false;
     if (firstCallbackNode !== null) {
-      // There's still work remaining. Request another callback.
+      /**
+       *  callback链表还没全部执行完，继续
+       * ensureHostCallbackIsScheduled也是会启动下一帧，所以不是连续调用
+       * 同时，isHostCallbackScheduled决定了ensureHostCallbackIsScheduled的行为，
+       * 在此分支中isHostCallbackScheduled === true, 所以ensureHostCallbackIsScheduled会执行一个cancelHostCallback函数
+       * cancelHostCallback设置scheduledHostCallback为null，可以令上一个animationTick停止
+       */
+      // 如果任务没有执行完，则再次调用ensureHostCallbackIsScheduled进入调度
       ensureHostCallbackIsScheduled();
     } else {
+      /**
+       * isHostCallbackScheduled这个变量只会在ensureHostCallbackIsScheduled中被设置为true
+       * 这个变量的意义可能是代表，是否所有任务都被flush了？，因为只有firstCallbackNode === null的情况下才会设为false
+       */
       isHostCallbackScheduled = false;
     }
-    // Before exiting, flush all the immediate work that was scheduled.
     flushImmediateWork();
   }
 }
@@ -296,18 +317,27 @@ function unstable_wrapCallback(callback) {
     }
   };
 }
-
+/**
+ * 
+ * callback是performAsyncWork
+ * deprecated_options 即将废弃整个scheduler模块都在维护一个callback的环形链表，
+ *  链表的头部是firstCallbackNode，当我们遇到一个判断firstCallbackNode === null，
+ *  我们应该明白这是这判断这个链表是否为空。在后文中，这个链表的元素我称之为callbackNode, 链表称为callback链表
+ *  unstable_scheduleCallback函数的内容概述就是生成callbackNode，并插入到callback链表之中
+ */
 function unstable_scheduleCallback(callback, deprecated_options) {
   var startTime =
     currentEventStartTime !== -1 ? currentEventStartTime : getCurrentTime();
-
+  // startTime这里多数情况下是getCurrentTime-----Performance.now()
+  // expirationTime意义是： 当前时间+任务预计完成时间
   var expirationTime;
   if (
     typeof deprecated_options === 'object' &&
     deprecated_options !== null &&
     typeof deprecated_options.timeout === 'number'
   ) {
-    // FIXME: Remove this branch once we lift expiration times out of React.
+     // 从requestWork调用到这里，目前只会走这个分支
+     // 目前来看timeout越小，优先级越大
     expirationTime = startTime + deprecated_options.timeout;
   } else {
     switch (currentPriorityLevel) {
@@ -334,32 +364,49 @@ function unstable_scheduleCallback(callback, deprecated_options) {
     previous: null,
   };
 
-  // Insert the new callback into the list, ordered first by expiration, then
-  // by insertion. So the new callback is inserted any other callback with
-  // equal expiration.
+  /** 
+   * 对应callbackNode.png图片
+   * firstCallbackNode 是一个双向循环链表的头部，这个链表在此模块（scheduler）模块维护
+   * firstCallbackNode === null 说明链表为空
+   */
   if (firstCallbackNode === null) {
-    // This is the first callback in the list.
     firstCallbackNode = newNode.next = newNode.previous = newNode;
     ensureHostCallbackIsScheduled();
   } else {
     var next = null;
     var node = firstCallbackNode;
+    /**
+     * 这个判断用于寻找expirationTime最大的任务并赋值给next（也就是优先级最低的任务）
+     */
     do {
       if (node.expirationTime > expirationTime) {
-        // The new callback expires before this one.
         next = node;
-        break;
+        break; // 跳出循环
       }
       node = node.next;
     } while (node !== firstCallbackNode);
+    // 这里环形链表的排序是这样的
+    /*
+    *           head
+    *    next7         next1
+    *  next6              next2
+    *    next5         next3
+    *           next4
+    *
+    * 其中head的expirationTime最小，next7最大，其余的next的expirationTime从小到大排序，
+    * 当next === null,走分支1，newNode的expirationTime是最大的（链表每个element都小于newNode），所以需要将newNode插入head之前
+    * 当next === firstCallbackNode，newNode的expirationTime是最小的，也就是newNode要插入head之前，成为新的head，
+    * 所以分支2需要修改链表的head指针
+    */
 
     if (next === null) {
-      // No callback with a later expiration was found, which means the new
-      // callback has the latest expiration in the list.
+      //当前callback 优先级最低，放在node链表最后一个
       next = firstCallbackNode;
     } else if (next === firstCallbackNode) {
+       //当前callback 优先级最高，放在node链表第一个
       // The new callback has the earliest expiration in the entire list.
       firstCallbackNode = newNode;
+      // 下面的方法会进入一个循环，循环调用list
       ensureHostCallbackIsScheduled();
     }
 
@@ -448,6 +495,8 @@ var requestAnimationFrameWithTimeout = function(callback) {
   });
   rAFTimeoutID = localSetTimeout(function() {
     // cancel the requestAnimationFrame
+    // 这里是防止localRequestAnimationFrame太长时间不调用
+    // 100ms后如果localRequestAnimationFrame没有调用，取消localRequestAnimationFrame
     localCancelAnimationFrame(rAFID);
     callback(getCurrentTime());
   }, ANIMATION_FRAME_TIMEOUT);
@@ -475,11 +524,8 @@ if (typeof window !== 'undefined' && window._schedMock) {
   cancelHostCallback = impl[1];
   getFrameDeadline = impl[2];
 } else if (
-  // If Scheduler runs in a non-DOM environment, it falls back to a naive
-  // implementation using setTimeout.
+  // 当前不处于浏览器环境
   typeof window === 'undefined' ||
-  // "addEventListener" might not be available on the window object
-  // if this is a mocked "window" object. So we need to validate that too.
   typeof window.addEventListener !== 'function'
 ) {
   var _callback = null;
@@ -533,20 +579,24 @@ if (typeof window !== 'undefined' && window._schedMock) {
       );
     }
   }
-
+  //在requestHostCallback设置，值一般为flushWork，代表下一个调度要做的事情
   var scheduledHostCallback = null;
+  // 是否已经发送调用idleTick的消息，在animationTick中设置为true
   var isMessageEventScheduled = false;
+  // 表示过期任务的时间，在idleTick中发现第一个任务的时间已经过期的时候设置
   var timeoutTime = -1;
-
+  // 是否已经开始调用requestAnimationFrame
   var isAnimationFrameScheduled = false;
-
+  // 是否正在执行callback
   var isFlushingHostCallback = false;
 
+  // 记录当前帧的到期时间，他等于currentTime + activeFraeTime，也就是requestAnimationFrame回调传入的时间，加上一帧的时间。
   var frameDeadline = 0;
   // We start out assuming that we run at 30fps but then the heuristic tracking
   // will adjust this value to a faster fps if we get more frequent animation
   // frames.
   var previousFrameTime = 33;
+  // 给一帧渲染用的时间，默认是 33，也就是 1 秒 30 帧
   var activeFrameTime = 33;
 
   getFrameDeadline = function() {
@@ -574,17 +624,22 @@ if (typeof window !== 'undefined' && window._schedMock) {
     var currentTime = getCurrentTime();
 
     var didTimeout = false;
+    /** 
+     * frameDeadline - currentTime <= 0 
+     * 说明浏览器更新动画/用户反馈，已经消耗了33ms，一帧的时间已经被用完
+     * react没有时间执行更新了
+     * 
+     * prevTimeoutTime <= currentTime 说明任务已经过期，强制更新
+     */
     if (frameDeadline - currentTime <= 0) {
-      // There's no time left in this idle period. Check if the callback has
-      // a timeout and whether it's been exceeded.
       if (prevTimeoutTime !== -1 && prevTimeoutTime <= currentTime) {
         // Exceeded the timeout. Invoke the callback even though there's no
         // time left.
+         // didTimeout： 是否强制输出更新
         didTimeout = true;
       } else {
         // No timeout.
         if (!isAnimationFrameScheduled) {
-          // Schedule another animation callback so we retry later.
           isAnimationFrameScheduled = true;
           requestAnimationFrameWithTimeout(animationTick);
         }
@@ -604,72 +659,93 @@ if (typeof window !== 'undefined' && window._schedMock) {
       }
     }
   };
-  // Assumes that we have addEventListener in this environment. Might need
-  // something better for old IE.
   window.addEventListener('message', idleTick, false);
 
+  /**
+   * 中间部分nextFrameTIme的判断是React检查帧数的计算，我们先忽略，关注整体。 
+   * animationTick一开始直接scheduledHostCallback是否为null，否则就继续通过requestAnimationFrameWithTimeout调用animationTick自身，
+   * 这是一个逐帧执行的递归。意思就是这个递归在浏览器在渲染下一帧的时候，才会调用再次调用animationTick。 也就是在animationTick的调用requestAnimationFrameWithTimeout(animationTick)之后，
+   * 后面的代码依然有时间可以执行。
+   */
   var animationTick = function(rafTime) {
+    // scheduledHostCallback也就是callback
     if (scheduledHostCallback !== null) {
-      // Eagerly schedule the next animation callback at the beginning of the
-      // frame. If the scheduler queue is not empty at the end of the frame, it
-      // will continue flushing inside that callback. If the queue *is* empty,
-      // then it will exit immediately. Posting the callback at the start of the
-      // frame ensures it's fired within the earliest possible frame. If we
-      // waited until the end of the frame to post the callback, we risk the
-      // browser skipping a frame and not firing the callback until the frame
-      // after that.
+      // 这里是连续递归调用，直到scheduledHostCallback === null
+      // scheduledHostCallback会在messageChannel的port1的回调中设为null
+      // 因为requestAnimationFrameWithTimeout会加入event loop,所以这里不是普通递归，而是每一帧执行一次
+      // 注意当下一帧执行了animationTick时，之前的animationTick已经计算出了nextFrameTime
       requestAnimationFrameWithTimeout(animationTick);
     } else {
-      // No pending work. Exit.
+      //这里说明没有方法需要调度
       isAnimationFrameScheduled = false;
       return;
     }
+    /**
+     * frameDeadline 第一次是0， 后面有赋值
+     * activeFrameTime 33 保持浏览器30帧的情况下，每一帧的执行时间 
+     * nextFrameTime就是此方法到下一帧之前可以执行多少时间
+     */
 
+
+    /**
+     * rafTime 当前时间戳
+     * activeFrameTime 每一帧的时间
+     * nextFrameTime 下一帧预计剩余时间
+     */
     var nextFrameTime = rafTime - frameDeadline + activeFrameTime;
+     /**
+      * nextFrameTime < activeFrameTime 说明 当前浏览器刷新频率高于30帧， 帧时间小于33ms 
+      */
     if (
       nextFrameTime < activeFrameTime &&
       previousFrameTime < activeFrameTime
     ) {
+       // nextFrameTime<8， 如果每一帧小于8ms,暂不支持
       if (nextFrameTime < 8) {
         // Defensive coding. We don't support higher frame rates than 120hz.
         // If the calculated frame time gets lower than 8, it is probably a bug.
         nextFrameTime = 8;
       }
-      // If one frame goes long, then the next one can be short to catch up.
-      // If two frames are short in a row, then that's an indication that we
-      // actually have a higher frame rate than what we're currently optimizing.
-      // We adjust our heuristic dynamically accordingly. For example, if we're
-      // running on 120hz display or 90hz VR display.
-      // Take the max of the two in case one of them was an anomaly due to
-      // missed frame deadlines.
+      // activeFrameTime 更新 （代表一帧完整的时间）
       activeFrameTime =
         nextFrameTime < previousFrameTime ? previousFrameTime : nextFrameTime;
     } else {
       previousFrameTime = nextFrameTime;
     }
-    frameDeadline = rafTime + activeFrameTime;
+    frameDeadline = rafTime + activeFrameTime; //frameDeadline是当前时间加上一帧的时间
     if (!isMessageEventScheduled) {
       isMessageEventScheduled = true;
+      /**
+       * window.postMessage 是放在任务队列里，
+       * 调用requestAnimationFrameWithTimeout，默认会先执行浏览器的动画， 然后才会执行任务队列的，
+       * 执行两个任务（浏览器动画+js）的时间和为33
+       */
       window.postMessage(messageKey, '*');
     }
   };
-
+  /**
+   * 开始进入调度，设置调度的内容，用scheduledHostCallback和timeoutTime这两个全局变量记录回调函数和对应的过期时间
+   */
   requestHostCallback = function(callback, absoluteTimeout) {
     scheduledHostCallback = callback;
     timeoutTime = absoluteTimeout;
     if (isFlushingHostCallback || absoluteTimeout < 0) {
-      // Don't wait for the next frame. Continue working ASAP, in a new event.
+      // 如果已经超时，直接调用方法
       window.postMessage(messageKey, '*');
     } else if (!isAnimationFrameScheduled) {
-      // If rAF didn't already schedule one, we need to schedule a frame.
-      // TODO: If this rAF doesn't materialize because the browser throttles, we
-      // might want to still have setTimeout trigger rIC as a backup to ensure
-      // that we keep performing work.
+      // isAnimationFrameScheduled 为false，说明还没有进入调度循环
+     
+      /**
+       * 调用requestAnimationFrameWithTimeout，
+       * 其实就是调用requestAnimationFrame在加上设置了一个100ms的定时器，防止requestAnimationFrame太久不触发。
+       * 
+       * isAnimationFrameScheduled  是否已经开始调用requestAnimationFrame
+       */
       isAnimationFrameScheduled = true;
       requestAnimationFrameWithTimeout(animationTick);
     }
   };
-
+   
   cancelHostCallback = function() {
     scheduledHostCallback = null;
     isMessageEventScheduled = false;

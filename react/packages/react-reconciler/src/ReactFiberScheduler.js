@@ -1893,6 +1893,7 @@ function recomputeCurrentRendererTime() {
   currentRendererTime = msToExpirationTime(currentTimeMs);
 }
 
+// 异步进行root任务调度就是通过这个方法来做的
 function scheduleCallbackWithExpirationTime(
   root: FiberRoot,
   expirationTime: ExpirationTime,
@@ -1900,12 +1901,12 @@ function scheduleCallbackWithExpirationTime(
   if (callbackExpirationTime !== NoWork) {
     // A callback is already scheduled. Check its expiration time (timeout).
     if (expirationTime > callbackExpirationTime) {
-      // Existing callback has sufficient timeout. Exit.
+      
+      // 新任务的expirationTime大于旧的(当前优先级低)，就直接return
       return;
     } else {
       if (callbackID !== null) {
-        // Existing callback has insufficient timeout. Cancel and schedule a
-        // new one.
+       //  新任务的expirationTime小于旧的，取消掉原来的
         cancelDeferredCallback(callbackID);
       }
     }
@@ -1913,11 +1914,12 @@ function scheduleCallbackWithExpirationTime(
   } else {
     startRequestCallbackTimer();
   }
-
+ //originalStartTimeMs 代表： react一加载获取的时间
   callbackExpirationTime = expirationTime;
   const currentMs = now() - originalStartTimeMs;
   const expirationTimeMs = expirationTimeToMs(expirationTime);
   const timeout = expirationTimeMs - currentMs;
+  // callbackID 方便cancel
   callbackID = scheduleDeferredCallback(performAsyncWork, {timeout});
 }
 
@@ -2034,8 +2036,8 @@ function requestWork(root: FiberRoot, expirationTime: ExpirationTime) {
     return;
   }
 
-  // TODO: Get rid of Sync and use current time?
   if (expirationTime === Sync) {
+     // 同步
     performSyncWork();
   } else {
     scheduleCallbackWithExpirationTime(root, expirationTime);
@@ -2408,12 +2410,15 @@ function completeRoot(
   commitRoot(root, finishedWork);
 }
 
-// When working on async work, the reconciler asks the renderer if it should
-// yield execution. For DOM, we implement this with requestIdleCallback.
+
 function shouldYield() {
   if (deadlineDidExpire) {
     return true;
   }
+  /**
+   * timeHeuristicForUnitOfWork = 1
+   *  deadline.timeRemaining() > timeHeuristicForUnitOfWork 说明还有剩余的时间可以执行react的更新
+   */
   if (
     deadline === null ||
     deadline.timeRemaining() > timeHeuristicForUnitOfWork
@@ -2422,6 +2427,9 @@ function shouldYield() {
     // during a timeout. This path is only hit for non-expired work.
     return false;
   }
+  /**
+   * 下面两行的意思是：这一帧的渲染时间已经超时了，return true
+   */
   deadlineDidExpire = true;
   return true;
 }
