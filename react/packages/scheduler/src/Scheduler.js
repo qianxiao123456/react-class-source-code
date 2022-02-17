@@ -97,6 +97,11 @@ function ensureHostCallbackIsScheduled() {
   } else {
     cancelHostCallback();
   }
+  /**
+   * 这里我们没有立马执行flushWork，而是交给了requestHostCallback。因为我们并不想直接把任务链表中的任务立马执行掉，也不是一口气把链表中的所有任务全部都执行掉。
+   * JS是单线程的，我们执行这些任务一直占据着主线程，会导致浏览器的其他任务一直等待，比如动画，就会出现卡顿，所以我们要选择合适的时期去执行它。所以我们交给requestHostCallback去处理这件事情，把flushWork交给了它。
+   * 这里你可以暂时把flushWork简单的想成执行链表中的任务。
+   */
   requestHostCallback(flushWork, expirationTime);
 }
 
@@ -324,6 +329,10 @@ function unstable_wrapCallback(callback) {
  *  链表的头部是firstCallbackNode，当我们遇到一个判断firstCallbackNode === null，
  *  我们应该明白这是这判断这个链表是否为空。在后文中，这个链表的元素我称之为callbackNode, 链表称为callback链表
  *  unstable_scheduleCallback函数的内容概述就是生成callbackNode，并插入到callback链表之中
+ * 1、创建一个任务节点newNode，按照优先级插入callback链表
+ * 2、我们把任务按照过期时间排好顺序了，那么何时去执行任务呢？怎么去执行呢？答案是有两种情况，
+ *    1是当添加第一个任务节点的时候开始启动任务执行，
+ *    2是当新添加的任务取代之前的节点成为新的第一个节点的时候。因为1意味着任务从无到有，应该 立刻启动。2意味着来了新的优先级最高的任务，应该停止掉之前要执行的任务，重新从新的任务开始执行。上面两种情况就对应ensureHostCallbackIsScheduled方法执行的两种情况。
  */
 function unstable_scheduleCallback(callback, deprecated_options) {
   var startTime =
