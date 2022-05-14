@@ -1981,7 +1981,8 @@ function requestCurrentTime() {
    * 那么什么情况下会在这里出现新的requestCurrentTime呢？
    */
   if (isRendering) {
-    return  ;
+    // 这里的情况是在生命周期里又一次触发了更新，返回的是performOnRoot之前计算的时间
+    return  currentSchedulerTime;
   }
   // 从调度队列中找到权限最高的root
   findHighestPriorityRoot();
@@ -2080,7 +2081,10 @@ function addRootToSchedule(root: FiberRoot, expirationTime: ExpirationTime) {
     }
   }
 }
-
+/**
+ * findHighestPriorityRoot函数主要执行两个操作， 一个是判断当前root是否还有任务，如果没有， 则从firstScheuleRoot链中移除。
+ *  一个是找出优先级最高的root和其对应的优先级并赋值给nextFlushedRoot\nextFlushedExpirationTime
+ */
 function findHighestPriorityRoot() {
   let highestPriorityWork = NoWork;
   let highestPriorityRoot = null;

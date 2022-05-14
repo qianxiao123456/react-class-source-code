@@ -1212,37 +1212,33 @@ function ChildReconciler(shouldTrackSideEffects) {
     return created;
   }
 
-  // This API will tag the children with the side-effect of the reconciliation
-  // itself. They will be added to the side-effect list as we pass through the
-  // children and the parent.
   function reconcileChildFibers(
     returnFiber: Fiber,
     currentFirstChild: Fiber | null,
     newChild: any,
     expirationTime: ExpirationTime,
   ): Fiber | null {
-    // This function is not recursive.
-    // If the top level item is an array, we treat it as a set of children,
-    // not as a fragment. Nested arrays on the other hand will be treated as
-    // fragment nodes. Recursion happens at the normal flow.
 
-    // Handle top level unkeyed fragments as if they were arrays.
-    // This leads to an ambiguity between <>{[...]}</> and <>...</>.
-    // We treat the ambiguous cases above the same.
+      /**
+       * 
+       * 判断顶层元素是否是 REACT_FRAGMENT_TYPE，并且没有 key
+       * 就是判断 <Fragment > 用的
+       */
     const isUnkeyedTopLevelFragment =
       typeof newChild === 'object' &&
       newChild !== null &&
       newChild.type === REACT_FRAGMENT_TYPE &&
       newChild.key === null;
     if (isUnkeyedTopLevelFragment) {
+      // type 为REACT_FRAGMENT_TYPE是不需要任何更新的，直接渲染子节点即可
       newChild = newChild.props.children;
     }
 
-    // Handle object types
     const isObject = typeof newChild === 'object' && newChild !== null;
 
     if (isObject) {
       switch (newChild.$$typeof) {
+        // 正常创建的 ReactElement
         case REACT_ELEMENT_TYPE:
           return placeSingleChild(
             reconcileSingleElement(
@@ -1252,6 +1248,8 @@ function ChildReconciler(shouldTrackSideEffects) {
               expirationTime,
             ),
           );
+          // 通过 ReactDOM.createPortal 创建的
+          // 模态框就是这么实现的
         case REACT_PORTAL_TYPE:
           return placeSingleChild(
             reconcileSinglePortal(
@@ -1263,7 +1261,7 @@ function ChildReconciler(shouldTrackSideEffects) {
           );
       }
     }
-
+    // 是个文本节点
     if (typeof newChild === 'string' || typeof newChild === 'number') {
       return placeSingleChild(
         reconcileSingleTextNode(
@@ -1274,7 +1272,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         ),
       );
     }
-
+    // 是个数组
     if (isArray(newChild)) {
       return reconcileChildrenArray(
         returnFiber,
@@ -1283,7 +1281,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         expirationTime,
       );
     }
-
+    // 不是数组，但是可遍历
     if (getIteratorFn(newChild)) {
       return reconcileChildrenIterator(
         returnFiber,

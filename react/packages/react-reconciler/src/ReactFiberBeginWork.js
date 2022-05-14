@@ -124,18 +124,16 @@ if (__DEV__) {
   didWarnAboutGetDerivedStateOnFunctionComponent = {};
   didWarnAboutFunctionRefs = {};
 }
-
+/**
+ * diff的核心函数
+ */
 export function reconcileChildren(
-  current: Fiber | null,
-  workInProgress: Fiber,
-  nextChildren: any,
-  renderExpirationTime: ExpirationTime,
+  current: Fiber | null, //上一次更新的与 workInProgress 配对的 FiberNode（有可能不存在）
+  workInProgress: Fiber, // 为当前正在处理的 FiberNode
+  nextChildren: any, // 这次更新的 workInProgress 下新的子节点（ ReactElement 数组
+  renderExpirationTime: ExpirationTime, //跟更新优先级相关
 ) {
   if (current === null) {
-    // If this is a fresh new component that hasn't been rendered yet, we
-    // won't update its child set by applying minimal side-effects. Instead,
-    // we will add them all to the child before it gets rendered. That means
-    // we can optimize this reconciliation pass by not tracking side-effects.
     workInProgress.child = mountChildFibers(
       workInProgress,
       null,
@@ -143,12 +141,10 @@ export function reconcileChildren(
       renderExpirationTime,
     );
   } else {
-    // If the current child is the same as the work in progress, it means that
-    // we haven't yet started any work on these children. Therefore, we use
-    // the clone algorithm to create a copy of all the current children.
-
-    // If we had any progressed work already, that is invalid at this point so
-    // let's throw it out.
+    /**
+     * reconcileChildFibers最终的返回是当前节点的第一个孩子节点，
+     * 会在performUnitWork中 return 并赋值给nextUnitOfWork
+     */
     workInProgress.child = reconcileChildFibers(
       workInProgress,
       current.child,
@@ -417,6 +413,7 @@ function updateFunctionComponent(
 
   // React DevTools reads this flag.
   workInProgress.effectTag |= PerformedWork;
+  ////将 ReactElement 变成 fiber对象，并更新，生成对应 DOM 的实例，并挂载到真正的 DOM 节点上
   reconcileChildren(
     current,
     workInProgress,
@@ -785,6 +782,10 @@ function mountLazyComponent(
   const resolvedProps = resolveDefaultProps(Component, props);
   let child;
   switch (resolvedTag) {
+    /**
+     * 传入updateFunctionComponent的大部分参数都是workInProgress这个 fiber 对象的属性
+     * 是在外面「冻结」这些属性，防止在updateFunctionComponent()中，修改这些属性 
+    */
     case FunctionComponent: {
       child = updateFunctionComponent(
         null,
@@ -1450,7 +1451,10 @@ function updateContextConsumer(
     } while (child = child.sibling);
   }
   */
-
+/**
+ * 这里根据之前设置的childExpirationTime来判断子树是否需要更新，如果子树也不需要更新则就直接return null了（直接跳过子树），
+ * 代表可以直接complete了。如果有更新还是需要调和子节点。
+ */
 function bailoutOnAlreadyFinishedWork(
   current: Fiber | null,
   workInProgress: Fiber,
@@ -1468,31 +1472,32 @@ function bailoutOnAlreadyFinishedWork(
     stopProfilerTimerIfRunning(workInProgress);
   }
 
-  // Check if the children have any pending work.
+  // childExpirationTime 意义：可以更早的帮助我们跳过子树更新
   const childExpirationTime = workInProgress.childExpirationTime;
   if (
     childExpirationTime === NoWork ||
     childExpirationTime > renderExpirationTime
   ) {
-    // The children don't have any work either. We can skip them.
-    // TODO: Once we add back resuming, we should check if the children are
-    // a work-in-progress set. If so, we need to transfer their effects.
     return null;
   } else {
-    // This fiber doesn't have work, but its subtree does. Clone the child
-    // fibers and continue.
     cloneChildFibers(current, workInProgress);
     return workInProgress.child;
   }
 }
-
+/**
+ * https://zhuanlan.zhihu.com/p/447409731
+ * 组件在 mount 时，由于是首次渲染，workInProgress fiber tree中除了根节点fiberRootNode之外，其余节点都不存在上一次更新时的 fiber 节点，
+ * 也就是说，在 mount 时，workInProgress fiber tree中除了根节点之外，所有节点的alternate都为空。所以在 mount 时，除了根节点fiberRootNode之外，其余节点调用 beginWork 时参数current等于null。
+ * 而 update 时，workInProgress fiber tree所有节点都存在上一次更新时的 fiber 节点，所以 current !== null。
+*/
 function beginWork(
   current: Fiber | null,
   workInProgress: Fiber,
-  renderExpirationTime: ExpirationTime,
+  renderExpirationTime: ExpirationTime, // 这里是FiberRoot上的ExpirationTimeToWorkOn
 ): Fiber | null {
-  const updateExpirationTime = workInProgress.expirationTime;
-
+   // 这里获取的expirationTime是Fiber对象上的expirationTime， 就是该节点产生的更新的过期时间
+  const updateExpirationTime = workInProgress.expirationTime; 
+ //current === null, 是mount阶段，否则是update阶段
   if (current !== null) {
     const oldProps = current.memoizedProps;
     const newProps = workInProgress.pendingProps;
@@ -1502,9 +1507,13 @@ function beginWork(
       (updateExpirationTime === NoWork ||
         updateExpirationTime > renderExpirationTime)
     ) {
-      // This fiber does not have any pending work. Bailout without entering
-      // the begin phase. There's still some bookkeeping we that needs to be done
-      // in this optimized path, mostly pushing stuff onto the stack.
+      /**
+       * 上面if条件判断了：
+        前后props是否相等
+        hasLegacyContextChanged判断了是否有老版本context使用并且发生变化
+        当前节点是否需要更新以及他的更新优先级是否在当前更新优先级之前
+        只要满足这三个条件都不存在，那么 React 判断当前节点是不需要更新的
+       */
       switch (workInProgress.tag) {
         case HostRoot:
           pushHostRootContext(workInProgress);
@@ -1559,8 +1568,6 @@ function beginWork(
                 renderExpirationTime,
               );
             } else {
-              // The primary children do not have pending work with sufficient
-              // priority. Bailout.
               const child = bailoutOnAlreadyFinishedWork(
                 current,
                 workInProgress,
@@ -1610,12 +1617,15 @@ function beginWork(
       );
     }
     case FunctionComponent: {
+      //React 组件的类型，FunctionComponent的类型是 function，ClassComponent的类型是 class
       const Component = workInProgress.type;
-      const unresolvedProps = workInProgress.pendingProps;
+      //下次渲染待更新的 props
+      const unresolvedProps = workInProgress.pendingProps; //pendingProps 新的渲染的时候的props
+      // pendingProps
       const resolvedProps =
         workInProgress.elementType === Component
           ? unresolvedProps
-          : resolveDefaultProps(Component, unresolvedProps);
+          : resolveDefaultProps(Component, unresolvedProps); // resolvedProps和suspend有关
       return updateFunctionComponent(
         current,
         workInProgress,
